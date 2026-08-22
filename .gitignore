@@ -1,0 +1,10 @@
+# Secrets — never committed, never read by tooling/agents
+.env
+
+# Runtime data
+state.json
+history.jsonl
+app.log*
+
+# Build output
+/passport-check
