@@ -20,7 +20,10 @@ import (
 // starts fresh — the baseline simply re-captures on the next check. Bump
 // this whenever the State fields or the meaning of their values change
 // (e.g. the notice-text format).
-const CurrentSchemaVersion = 1
+// v2: notice text has the "[Stand: ...]" marker stripped before it is
+// stored or compared, so a v1 baseline captured with a marker would no
+// longer compare equal; state is reset unconditionally.
+const CurrentSchemaVersion = 2
 
 // State is everything the engine needs to survive a restart without
 // false-triggering or losing an active alert.
@@ -93,6 +96,12 @@ func (s *Store) LoadState() (State, string, error) {
 	}
 	if st.SchemaVersion != CurrentSchemaVersion {
 		reason := fmt.Sprintf("state schema changed (v%d -> v%d), starting fresh", st.SchemaVersion, CurrentSchemaVersion)
+		if st.Alerting {
+			// The discarded state carried an unacknowledged alert; the
+			// fresh baseline will silently adopt the changed page, so make
+			// the loss visible in the log and History panel.
+			reason += "; the discarded state had an ACTIVE ALERT — check the page manually"
+		}
 		s.log.Warn("discarding persisted state", "path", s.statePath, "reason", reason)
 		return State{}, reason, nil
 	}

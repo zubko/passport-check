@@ -5,6 +5,8 @@ A terminal app that watches the Berlin naturalization service page
 service-notice text and alerts your phone via [Pushover](https://pushover.net).
 
 - Checks the page **every hour** (configurable).
+- The page's `[Stand: ...]` timestamp is ignored, so a republish that only
+  refreshes it does not count as a change.
 - When the notice text **changes** (e.g. the disruption message is removed),
   it sends an **emergency-priority** Pushover alert (sound `good-1`) and
   repeats it **every 10 minutes** until you press `s` (Stop alerts) or quit.

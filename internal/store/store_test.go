@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -78,6 +79,11 @@ func TestLoadStateResetsOnSchemaMismatch(t *testing.T) {
 	}
 	if reason == "" {
 		t.Error("want non-empty reset reason for schema mismatch")
+	}
+	// The discarded state was mid-alert; the reset silently drops that
+	// alert, so the reason must call it out.
+	if !strings.Contains(reason, "ACTIVE ALERT") {
+		t.Errorf("reset reason does not mention the discarded active alert: %q", reason)
 	}
 	if st.Baseline != "" || st.Alerting || st.FailCount != 0 {
 		t.Errorf("state not reset: %+v", st)

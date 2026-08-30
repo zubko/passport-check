@@ -25,12 +25,17 @@ func fixture(t *testing.T) []byte {
 	return data
 }
 
-func TestExtractNoticeFromFixture(t *testing.T) {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(fixture(t))))
+func parse(t *testing.T, html string) *goquery.Document {
+	t.Helper()
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
-		t.Fatalf("parsing fixture: %v", err)
+		t.Fatalf("parsing: %v", err)
 	}
-	notice := ExtractNotice(doc)
+	return doc
+}
+
+func TestExtractNoticeFromFixture(t *testing.T) {
+	notice := ExtractNotice(parse(t, string(fixture(t))))
 
 	if notice == NoticeMissing {
 		t.Fatal("notice block not found in fixture")
@@ -42,29 +47,73 @@ func TestExtractNoticeFromFixture(t *testing.T) {
 	if strings.Contains(notice, "\n") || strings.Contains(notice, "  ") {
 		t.Error("notice is not whitespace-normalized")
 	}
+	// The fixture carries a "[Stand: ...]" marker; extraction must drop it.
+	if strings.Contains(notice, "Stand:") {
+		t.Errorf("Stand marker survived extraction: %s", notice)
+	}
+}
+
+func TestExtractNoticeStripsStandMarker(t *testing.T) {
+	// The site refreshes "[Stand: ...]" on every republish, so it must not
+	// reach the comparison: two pages differing only in that timestamp have
+	// to extract to identical text.
+	page := func(stand string) string {
+		return `<html><body><div id="layout-grid__area--maincontent"><div class="message">
+			<p>Leider ist die Dienstleistung derzeit online nicht nutzbar.<br />
+			` + stand + `</p>
+		</div></div></body></html>`
+	}
+	got := ExtractNotice(parse(t, page("[Stand: 24.08.2026 08:30]")))
+	if want := "Leider ist die Dienstleistung derzeit online nicht nutzbar."; got != want {
+		t.Errorf("notice = %q, want %q", got, want)
+	}
+	if later := ExtractNotice(parse(t, page("[Stand: 25.08.2026 17:05]"))); later != got {
+		t.Errorf("timestamp bump changed the notice:\n old: %q\n new: %q", got, later)
+	}
+}
+
+func TestStripVolatile(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"Störung [Stand: 24.08.2026 08:30]", "Störung"},
+		{"[Stand: 24.08.2026] Störung behoben", "Störung behoben"},
+		{"vor [Stand: 1.1.2026] und [stand : 2.2.2026] nach", "vor und nach"},
+		{"keine Marker hier", "keine Marker hier"},
+		{"eckige [Klammern] bleiben", "eckige [Klammern] bleiben"},
+		// The result is normalized even when no marker is present.
+		{"kein  Marker,\n\taber Whitespace", "kein Marker, aber Whitespace"},
+		// A malformed (unclosed/nested) marker must NOT swallow real text
+		// up to the next "]"; it survives verbatim instead (worst case: a
+		// false-positive alert, never a suppressed one).
+		{"kaputt [Stand: 1.1.2026 Text [echt] mehr", "kaputt [Stand: 1.1.2026 Text [echt] mehr"},
+	}
+	for _, c := range cases {
+		if got := StripVolatile(c.in); got != c.want {
+			t.Errorf("StripVolatile(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
 }
 
 func TestExtractNoticeMissingBlock(t *testing.T) {
 	html := `<html><body><div id="layout-grid__area--maincontent"><h1>Titel</h1></div></body></html>`
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
-	if err != nil {
-		t.Fatalf("parsing: %v", err)
-	}
-	if got := ExtractNotice(doc); got != NoticeMissing {
+	if got := ExtractNotice(parse(t, html)); got != NoticeMissing {
 		t.Errorf("want NoticeMissing sentinel, got %q", got)
 	}
 }
 
 func TestExtractNoticeEmptyBlockUsesSentinel(t *testing.T) {
-	// An existing-but-empty block must NOT extract to "": the engine
+	// A block left without text must NOT extract to "": the engine
 	// reserves "" for "no baseline captured yet".
-	html := `<html><body><div id="layout-grid__area--maincontent"><div class="message">   </div></div></body></html>`
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
-	if err != nil {
-		t.Fatalf("parsing: %v", err)
+	cases := []struct{ name, block string }{
+		{"whitespace only", "   "},
+		{"stand marker only", "[Stand: 24.08.2026 08:30]"},
 	}
-	if got := ExtractNotice(doc); got != NoticeEmpty {
-		t.Errorf("want NoticeEmpty sentinel, got %q", got)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			html := `<html><body><div id="layout-grid__area--maincontent"><div class="message">` + c.block + `</div></div></body></html>`
+			if got := ExtractNotice(parse(t, html)); got != NoticeEmpty {
+				t.Errorf("want NoticeEmpty sentinel, got %q", got)
+			}
+		})
 	}
 }
 
@@ -75,11 +124,7 @@ func TestExtractNoticeJoinsMultipleBlocks(t *testing.T) {
 		<div class="message">Cookie Banner</div>
 		<div class="message">Echte Störung</div>
 	</div></body></html>`
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
-	if err != nil {
-		t.Fatalf("parsing: %v", err)
-	}
-	got := ExtractNotice(doc)
+	got := ExtractNotice(parse(t, html))
 	if !strings.Contains(got, "Cookie Banner") || !strings.Contains(got, "Echte Störung") {
 		t.Errorf("want both blocks in extracted notice, got %q", got)
 	}

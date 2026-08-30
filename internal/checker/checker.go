@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -34,9 +35,20 @@ const userAgent = "passport-check/1.0 (personal availability monitor)"
 // block on service.berlin.de detail pages.
 const noticeSelector = "#layout-grid__area--maincontent div.message"
 
+// standRe matches the "[Stand: 24.08.2026 08:30]" freshness marker the site
+// stamps on notice text. It is refreshed whenever the page is republished,
+// including when the wording is untouched, so it is removed before the text
+// is compared — otherwise a bumped timestamp alone would fire a change
+// alert. It can appear in any block, not only the last one. The body is
+// bounded (no nested "[", at most 80 runes) so a malformed marker — e.g. an
+// unclosed bracket in the hand-maintained markup — fails to match instead
+// of swallowing real notice text up to the next "]"; the failure mode is
+// then a false-positive alert, never a silently suppressed one.
+var standRe = regexp.MustCompile(`(?i)\[\s*stand\s*:[^\][]{0,80}\]`)
+
 // Result describes one successful fetch of the page.
 type Result struct {
-	Notice     string // normalized notice text, or NoticeMissing
+	Notice     string // normalized notice text with volatile markers stripped, or a sentinel
 	HTTPStatus int
 	Duration   time.Duration
 }
@@ -115,7 +127,10 @@ func ExtractNotice(doc *goquery.Document) string {
 	}
 	var parts []string
 	sel.Each(func(_ int, s *goquery.Selection) {
-		if t := Normalize(s.Text()); t != "" {
+		// Normalize before stripping: it folds non-ASCII whitespace (e.g.
+		// NBSP, common on this site) to plain spaces, which standRe's
+		// ASCII-only \s would otherwise not match inside the marker.
+		if t := StripVolatile(Normalize(s.Text())); t != "" {
 			parts = append(parts, t)
 		}
 	})
@@ -129,4 +144,13 @@ func ExtractNotice(doc *goquery.Document) string {
 // cosmetic reformatting of the page does not register as a change.
 func Normalize(s string) string {
 	return strings.Join(strings.Fields(s), " ")
+}
+
+// StripVolatile removes markers that the site changes without the notice
+// itself meaning anything different — currently only "[Stand: ...]". The
+// result is always whitespace-normalized (removing a marker leaves stray
+// spaces behind). A block consisting solely of such a marker collapses to
+// "" and is then dropped by ExtractNotice.
+func StripVolatile(s string) string {
+	return Normalize(standRe.ReplaceAllString(s, " "))
 }
