@@ -88,7 +88,7 @@ func New(eng *engine.Engine, history []store.Event) Model {
 	m.actions = []action{
 		{"Check now", "run a check immediately; resets the countdown", eng.CheckNow},
 		{"Stop alerts", "acknowledge the change and stop repeating alerts", eng.StopAlerts},
-		{"Test: change alert", "send a [TEST] emergency notification", eng.TestSuccess},
+		{"Test: change alert", "send a [TEST] high-priority notification", eng.TestSuccess},
 		{"Test: error-is-back", "send a [TEST] normal notification", eng.TestFailure},
 		{"Quit", "exit the app (stops all checking)", nil},
 	}

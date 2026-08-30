@@ -17,26 +17,19 @@ import (
 // DefaultAPIURL is the Pushover message endpoint.
 const DefaultAPIURL = "https://api.pushover.net/1/messages.json"
 
-// Priorities used by the app.
+// Priorities used by the app. Change alerts are high, not emergency: the
+// engine already re-sends them every ALERT_INTERVAL until acknowledged, so
+// Pushover's own acknowledge-or-retry loop (priority 2) would stack a second
+// repeat cadence on top.
 const (
-	PriorityNormal    = 0
-	PriorityEmergency = 2
+	PriorityNormal = 0
+	PriorityHigh   = 1
 )
 
 // Notification sounds used by the app (see https://pushover.net/api#sounds).
 const (
 	SoundPositive = "good-1"  // good news: the notice changed (error gone)
 	SoundNegative = "alert-2" // bad news: the error notice is back
-)
-
-// Emergency-priority parameters: Pushover re-alerts the device every
-// emergencyRetry seconds until acknowledged, giving up after the client's
-// expire duration. Expire follows the app's re-send cadence (ALERT_INTERVAL)
-// so device-side retries neither stop early nor stack across the app's own
-// repeats; Pushover bounds it to [retry, 3h].
-const (
-	emergencyRetry     = 60 * time.Second
-	emergencyExpireMax = 3 * time.Hour // Pushover API maximum (10800s)
 )
 
 // Message is one notification to deliver.
@@ -52,28 +45,24 @@ type Client struct {
 	apiURL string
 	token  string
 	user   string
-	expire time.Duration // emergency-priority expire, clamped
 	http   *http.Client
 	log    *slog.Logger
 }
 
-// New builds a Client for the official Pushover endpoint. alertInterval is
-// the app's re-send cadence; emergency-priority messages use it as their
-// expire, clamped to Pushover's accepted range.
-func New(token, user string, alertInterval time.Duration, log *slog.Logger) *Client {
+// New builds a Client for the official Pushover endpoint.
+func New(token, user string, log *slog.Logger) *Client {
 	return &Client{
 		apiURL: DefaultAPIURL,
 		token:  token,
 		user:   user,
-		expire: min(max(alertInterval, emergencyRetry), emergencyExpireMax),
 		http:   &http.Client{Timeout: 30 * time.Second},
 		log:    log,
 	}
 }
 
 // NewWithURL is like New but targets a custom endpoint. Used in tests.
-func NewWithURL(apiURL, token, user string, alertInterval time.Duration, log *slog.Logger) *Client {
-	c := New(token, user, alertInterval, log)
+func NewWithURL(apiURL, token, user string, log *slog.Logger) *Client {
+	c := New(token, user, log)
 	c.apiURL = apiURL
 	return c
 }
@@ -93,10 +82,6 @@ func (c *Client) Send(ctx context.Context, m Message) error {
 		"title":    {m.Title},
 		"message":  {m.Body},
 		"priority": {strconv.Itoa(m.Priority)},
-	}
-	if m.Priority == PriorityEmergency {
-		form.Set("retry", strconv.Itoa(int(emergencyRetry.Seconds())))
-		form.Set("expire", strconv.Itoa(int(c.expire.Seconds())))
 	}
 	if m.Sound != "" {
 		form.Set("sound", m.Sound)

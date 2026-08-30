@@ -176,7 +176,7 @@ func (e *Engine) CheckNow() { e.enqueue(actionCheckNow) }
 // notice text becomes the new baseline.
 func (e *Engine) StopAlerts() { e.enqueue(actionStopAlerts) }
 
-// TestSuccess sends a [TEST] emergency-priority change alert.
+// TestSuccess sends a [TEST] high-priority change alert.
 func (e *Engine) TestSuccess() { e.enqueue(actionTestSuccess) }
 
 // TestFailure sends a [TEST] normal-priority error-is-back notification.
@@ -257,12 +257,12 @@ func (e *Engine) Run(ctx context.Context) {
 				e.handleStopAlerts()
 
 			case actionTestSuccess:
-				e.emit("action", "info", "Test: sending 'service changed' alert (emergency priority)")
+				e.emit("action", "info", "Test: sending 'service changed' alert (high priority)")
 				e.log.Info("action: test success notification")
 				e.sendNotification(ctx, notify.Message{
 					Title:    "[TEST] Berlin service page changed!",
 					Body:     "This is a test of the change alert. The notice text on " + e.targetURL + " would have changed.",
-					Priority: notify.PriorityEmergency,
+					Priority: notify.PriorityHigh,
 					Sound:    notify.SoundPositive,
 				})
 
@@ -427,7 +427,7 @@ func (e *Engine) handleFetchSuccess(ctx context.Context, res checker.Result, tri
 	}
 }
 
-// sendChangeAlert sends the emergency-priority "page changed" alert. It is
+// sendChangeAlert sends the high-priority "page changed" alert. It is
 // called on first detection, on resume, and by the alert ticker; each path
 // re-verifies that alerting is still active.
 func (e *Engine) sendChangeAlert(ctx context.Context, first bool) {
@@ -446,7 +446,7 @@ func (e *Engine) sendChangeAlert(ctx context.Context, first bool) {
 	sent := e.sendNotification(ctx, notify.Message{
 		Title:    title,
 		Body:     "The notice on " + e.targetURL + " changed. Current text:\n\n" + snippet(changed, 500) + "\n\nPress 's' in the app to stop these alerts.",
-		Priority: notify.PriorityEmergency,
+		Priority: notify.PriorityHigh,
 		Sound:    notify.SoundPositive,
 	})
 	if sent {

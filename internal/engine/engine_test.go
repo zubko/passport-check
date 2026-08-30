@@ -162,7 +162,7 @@ func TestFirstCheckCapturesBaseline(t *testing.T) {
 	}
 }
 
-func TestChangeTriggersRepeatingEmergencyAlerts(t *testing.T) {
+func TestChangeTriggersRepeatingHighPriorityAlerts(t *testing.T) {
 	fx := newFixture(t, store.State{Baseline: errorNotice})
 
 	fx.fetcher.set("Die Dienstleistung ist wieder online verfügbar.", nil)
@@ -175,8 +175,8 @@ func TestChangeTriggersRepeatingEmergencyAlerts(t *testing.T) {
 		return len(fx.notifier.messages()) >= 2
 	})
 	for _, m := range fx.notifier.messages()[:2] {
-		if m.Priority != notify.PriorityEmergency {
-			t.Errorf("alert priority = %d, want emergency", m.Priority)
+		if m.Priority != notify.PriorityHigh {
+			t.Errorf("alert priority = %d, want high", m.Priority)
 		}
 		if m.Sound != notify.SoundPositive {
 			t.Errorf("alert sound = %q, want %q", m.Sound, notify.SoundPositive)
@@ -204,8 +204,8 @@ func TestResumeActiveAlertAlertsImmediately(t *testing.T) {
 		return len(fx.notifier.messages()) >= 1
 	})
 	first := fx.notifier.messages()[0]
-	if first.Priority != notify.PriorityEmergency {
-		t.Errorf("resume alert priority = %d, want emergency", first.Priority)
+	if first.Priority != notify.PriorityHigh {
+		t.Errorf("resume alert priority = %d, want high", first.Priority)
 	}
 	if !strings.Contains(first.Body, "Neuer Text") {
 		t.Errorf("resume alert body missing changed text: %q", first.Body)
@@ -392,7 +392,7 @@ func TestTestActionsSendPrefixedMessages(t *testing.T) {
 	fx.eng.TestSuccess()
 	waitFor(t, "test success sent", func() bool {
 		for _, m := range fx.notifier.messages() {
-			if strings.HasPrefix(m.Title, "[TEST]") && m.Priority == notify.PriorityEmergency {
+			if strings.HasPrefix(m.Title, "[TEST]") && m.Priority == notify.PriorityHigh {
 				return true
 			}
 		}

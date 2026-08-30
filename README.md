@@ -8,7 +8,7 @@ service-notice text and alerts your phone via [Pushover](https://pushover.net).
 - The page's `[Stand: ...]` timestamp is ignored, so a republish that only
   refreshes it does not count as a change.
 - When the notice text **changes** (e.g. the disruption message is removed),
-  it sends an **emergency-priority** Pushover alert (sound `good-1`) and
+  it sends a **high-priority** Pushover alert (sound `good-1`) and
   repeats it **every 10 minutes** until you press `s` (Stop alerts) or quit.
 - If the old error notice **comes back**, it sends a single notification
   (sound `alert-2`) and stops alerting.
@@ -60,7 +60,7 @@ panel, and key hints.
 | `Enter` | run the selected action |
 | `c` | check now (resets the hourly countdown) |
 | `s` | stop alerts (adopts the new text as baseline) |
-| `t` | send a `[TEST]` change alert (emergency priority) |
+| `t` | send a `[TEST]` change alert (high priority) |
 | `f` | send a `[TEST]` error-is-back notification |
 | `?` | toggle full help |
 | `q` / `Ctrl+C` | quit |

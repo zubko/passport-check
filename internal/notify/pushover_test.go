@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 )
 
 func discardLogger() *slog.Logger {
@@ -26,7 +25,7 @@ func TestSendNormalPriority(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewWithURL(srv.URL, "tok", "usr", 10*time.Minute, discardLogger())
+	c := NewWithURL(srv.URL, "tok", "usr", discardLogger())
 	err := c.Send(context.Background(), Message{Title: "T", Body: "B", Priority: PriorityNormal})
 	if err != nil {
 		t.Fatalf("Send: %v", err)
@@ -46,56 +45,34 @@ func TestSendNormalPriority(t *testing.T) {
 	}
 }
 
-func TestSendEmergencyAddsRetryExpire(t *testing.T) {
+func TestSendHighPriority(t *testing.T) {
 	var got map[string]string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
-		got = map[string]string{
-			"priority": r.PostForm.Get("priority"),
-			"retry":    r.PostForm.Get("retry"),
-			"expire":   r.PostForm.Get("expire"),
-			"sound":    r.PostForm.Get("sound"),
+		got = map[string]string{}
+		for k := range r.PostForm {
+			got[k] = r.PostForm.Get(k)
 		}
 		_, _ = w.Write([]byte(`{"status":1,"request":"abc123"}`))
 	}))
 	defer srv.Close()
 
-	c := NewWithURL(srv.URL, "tok", "usr", 10*time.Minute, discardLogger())
-	err := c.Send(context.Background(), Message{Title: "T", Body: "B", Priority: PriorityEmergency, Sound: SoundPositive})
+	c := NewWithURL(srv.URL, "tok", "usr", discardLogger())
+	err := c.Send(context.Background(), Message{Title: "T", Body: "B", Priority: PriorityHigh, Sound: SoundPositive})
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	if got["priority"] != "2" || got["retry"] != "60" || got["expire"] != "600" {
-		t.Errorf("emergency params = %v, want priority=2 retry=60 expire=600", got)
+	if got["priority"] != "1" {
+		t.Errorf("form[priority] = %q, want %q", got["priority"], "1")
 	}
 	if got["sound"] != SoundPositive {
 		t.Errorf("form[sound] = %q, want %q", got["sound"], SoundPositive)
 	}
-}
-
-func TestEmergencyExpireFollowsAlertIntervalClamped(t *testing.T) {
-	cases := []struct {
-		interval time.Duration
-		want     string
-	}{
-		{time.Hour, "3600"},      // follows the configured cadence
-		{10 * time.Second, "60"}, // clamped up to the retry period
-		{5 * time.Hour, "10800"}, // clamped to the Pushover maximum (3h)
-	}
-	for _, tc := range cases {
-		var gotExpire string
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_ = r.ParseForm()
-			gotExpire = r.PostForm.Get("expire")
-			_, _ = w.Write([]byte(`{"status":1}`))
-		}))
-		c := NewWithURL(srv.URL, "tok", "usr", tc.interval, discardLogger())
-		if err := c.Send(context.Background(), Message{Title: "T", Body: "B", Priority: PriorityEmergency}); err != nil {
-			t.Fatalf("interval %s: Send: %v", tc.interval, err)
-		}
-		srv.Close()
-		if gotExpire != tc.want {
-			t.Errorf("interval %s: expire = %q, want %q", tc.interval, gotExpire, tc.want)
+	// The app repeats alerts itself, so it never uses Pushover's
+	// emergency acknowledge-or-retry loop.
+	for _, k := range []string{"retry", "expire"} {
+		if _, ok := got[k]; ok {
+			t.Errorf("form[%s] must not be set", k)
 		}
 	}
 }
@@ -107,7 +84,7 @@ func TestSendAPIRejection(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewWithURL(srv.URL, "bad", "usr", 10*time.Minute, discardLogger())
+	c := NewWithURL(srv.URL, "bad", "usr", discardLogger())
 	err := c.Send(context.Background(), Message{Title: "T", Body: "B"})
 	if err == nil {
 		t.Fatal("want error on API rejection, got nil")

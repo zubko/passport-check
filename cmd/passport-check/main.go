@@ -64,7 +64,7 @@ func run() error {
 	}
 
 	fetcher := checker.New(cfg.TargetURL, log)
-	notifier := notify.New(cfg.PushoverToken, cfg.PushoverUser, cfg.AlertInterval, log)
+	notifier := notify.New(cfg.PushoverToken, cfg.PushoverUser, log)
 	eng := engine.New(fetcher, notifier, st, persisted, cfg.TargetURL, cfg.CheckInterval, cfg.AlertInterval, log)
 
 	model := tui.New(eng, history)
